@@ -1,0 +1,66 @@
+name: Build and Publish Donetick Docker Image
+
+# Запускать на пуш в main или по тегу
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Checkout код
+      - uses: actions/checkout@v5
+
+      # 2) Создать config/selfhosted.yaml
+      - name: Generate selfhosted.yaml
+        run: |
+          mkdir -p config
+          cat > config/selfhosted.yaml << 'EOF'
+          name: "selfhosted"
+          database:
+            type: "sqlite"
+            path: "/donetick-data/donetick.db"
+
+          jwt:
+            secret: "${{ secrets.JWT_SECRET }}"
+            session_time: "168h"
+            max_refresh: "168h"
+
+          server:
+            host: "0.0.0.0"
+            port: 2021
+            serve_frontend: true
+
+          notifications:
+            telegram:
+              enabled: true
+              bot_token: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+
+          logging:
+            level: "info"
+          EOF
+
+      # 3) Логин в Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      # 4) Собрать и запушить
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/donetick:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/donetick:${{ github.sha }}
+
+      # (Опционально) 5) Вывести список файлов config
+      - name: Debug: List config
+        run: |
+          echo "Contents of config:"
+          cat config/selfhosted.yaml
